@@ -8,9 +8,10 @@ const ascii = `
  \\_____/_/    \\_\\_/\\_/ \\___||___/\\___/|_| |_| |_|\\___|____/ \\___/ \\__|
 			`;
 
-const { Traffic, Updater } = require("./Modules");
+const { Traffic, GAwesomeClient } = require("./Modules");
 const { Boot, Sharder } = require("./Internals");
 const { Stopwatch } = require("./Modules/Utils");
+const centralClient = new GAwesomeClient(null);
 
 const database = require("./Database/Driver.js");
 const auth = require("./Configurations/auth.js");
@@ -22,7 +23,7 @@ const scope = { safeMode: false };
 
 Boot({ configJS, configJSON, auth }, scope).then(() => {
 	if (scope.migrating) return;
-	winston.debug("Connecting to MongoDB... ~(˘▾˘~)", { url: configJS.databaseURL });
+	winston.debug("Connecting to MongoDB... ~(˘▾˘~)", { URL: configJS.database.URL, db: configJS.database.db });
 
 	// eslint-disable-next-line promise/catch-or-return
 	database.initialize(configJS.database).catch(err => {
@@ -66,9 +67,15 @@ Boot({ configJS, configJSON, auth }, scope).then(() => {
 			}
 
 			winston.silly("Confirming config.json values.");
-			if (await Updater.check(configJSON) === 404) {
-				winston.warn(`GAB version ${configJSON.version} was not found on branch ${configJSON.branch}, you may need to reinstall GAB for the Updater to be enabled again.`);
-				configWarnings.push(`GAwesomeBot ${configJSON.version} is not a valid version on branch ${configJSON.branch}. The Updater has been disabled to avoid update conflicts.`);
+			let localVersion;
+			try {
+				localVersion = await centralClient.API("versions").branch(configJSON.branch).get(configJSON.version);
+			} catch (err) {
+				localVersion = {};
+			}
+			if (!localVersion.valid) {
+				winston.warn(`GAB version ${configJSON.version} was not found on branch ${configJSON.branch}, you may need to reinstall GAB in order to enable Versioning.`);
+				configWarnings.push(`GAwesomeBot ${configJSON.version} is not a valid version on branch ${configJSON.branch}. Versioning has been disabled to avoid update conflicts.`);
 			}
 
 			winston.silly("Confirming environment setup.");
